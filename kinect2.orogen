@@ -5,6 +5,7 @@ using_library "base-types"
 using_library "freenect2"
 using_library "glu"
 using_library "glfw3"
+using_task_library "image_preprocessing"
 
 version "0.1"
 
@@ -18,4 +19,13 @@ task_context "Task" do
 
     output_port("depth_frame", ro_ptr("/base/samples/DistanceImage")).
         doc("depth image retrieved from Camera")
+
+    output_port("visualizeDepth_frame", ro_ptr("/base/samples/frame/Frame")).
+        doc("Visualizing depth image")
+end
+
+deployment 'kinect2_test' do
+    task("kinect", "Task")
+    task("converter","image_preprocessing::DepthImage2Pointcloud")
+    add_default_logger.periodic(0.5)
 end

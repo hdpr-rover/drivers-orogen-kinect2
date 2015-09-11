@@ -8,7 +8,7 @@
   <url>http://</url>
   <logo>http://</logo>
   <depend package="base/cmake" />
-  <depend package="drivers/freenect2" />
+ <!-- <depend package="drivers/freenect2" /> -->
   <depend package="image_processing/orogen/image_preprocessing" />
   <depend package="drivers/orogen/transformer" />
 </package>

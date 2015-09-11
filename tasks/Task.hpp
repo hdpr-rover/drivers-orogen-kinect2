@@ -5,6 +5,10 @@
 
 #include "kinect2/TaskBase.hpp"
 #include <libfreenect2/libfreenect2.hpp>
+#include <libfreenect2/frame_listener_impl.h>
+#include <libfreenect2/registration.h>
+#include <libfreenect2/packet_pipeline.h>
+
 
 namespace kinect2 {
 
@@ -28,11 +32,15 @@ namespace kinect2 {
     protected:
         libfreenect2::Freenect2Device *device;
         libfreenect2::Freenect2 *driver;
+	libfreenect2::PacketPipeline *pipeline;
+
         RTT::extras::ReadOnlyPointer<base::samples::frame::Frame> color_frame_p;
         RTT::extras::ReadOnlyPointer<base::samples::frame::Frame> ir_frame_p;
+	RTT::extras::ReadOnlyPointer<base::samples::frame::Frame> visualizeDepth_frame_p;
         RTT::extras::ReadOnlyPointer<base::samples::DistanceImage> depth_frame_p;
         base::samples::frame::Frame *color_frame;
         base::samples::frame::Frame *ir_frame;
+	base::samples::frame::Frame *visualizeDepth_frame;
         base::samples::DistanceImage *depth_frame;
 
 

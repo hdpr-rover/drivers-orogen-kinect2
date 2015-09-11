@@ -4,6 +4,7 @@
 #include <base/Logging.hpp>
 #include <GL/freeglut.h>
 #include <GLFW/glfw3.h>
+#include <opencv2/opencv.hpp>
 
 using namespace kinect2;
 using namespace libfreenect2;
@@ -16,6 +17,8 @@ Task::Task(std::string const& name)
  color_frame = 0;
  depth_frame = 0;
  ir_frame = 0;
+ pipeline = new CpuPacketPipeline();
+ visualizeDepth_frame = 0;
 }
 
 Task::Task(std::string const& name, RTT::ExecutionEngine* engine)
@@ -23,6 +26,7 @@ Task::Task(std::string const& name, RTT::ExecutionEngine* engine)
 {
  glfwInit();
  driver = new Freenect2();
+ pipeline = new CpuPacketPipeline();
 }
 
 Task::~Task()
@@ -52,9 +56,9 @@ bool Task::configureHook()
         LOG_FATAL_S << "Could not open Kinect"; 
         return false; 
     }
-
+    std::string serial = driver->getDefaultDeviceSerialNumber();
 //    device = driver->openDefaultDevice();
-    device = driver->openDevice(0); //TODO handle more than 1 device
+    device = driver->openDevice(serial,pipeline); //TODO handle more than 1 device
     if(!device){
         LOG_FATAL_S << "Could not open Kinect"; 
         return false;
@@ -85,6 +89,7 @@ void Task::stopHook()
 {
     TaskBase::stopHook();
     device->stop();
+    device->close();
 }
 void Task::cleanupHook()
 {
@@ -126,24 +131,30 @@ bool Task::onNewFrame(Frame::Type type, Frame *frame){
         }
     }else if(type == Frame::Ir){
         if(bpp == 4){
+            size_t bpp_grayscale = 2;
             if(!ir_frame){
-                ir_frame = new base::samples::frame::Frame(width,height,32,base::samples::frame::MODE_GRAYSCALE);
+                ir_frame = new base::samples::frame::Frame(width,height,16,base::samples::frame::MODE_GRAYSCALE);
             }
             char data_new[width*height*bpp];
-            for(size_t x=0;x<width;x++){
+            float *dataFloat = (float*)data;
+	    uint16_t data16[width*height];
+	    char dataChar[width*height*bpp_grayscale];
+            
+	    for(size_t x=0;x<width;x++){
                 for(size_t y=0;y<height;y++){
-                    data_new[0 + x*bpp + y*bpp*width] =  data[0 + (width-x)*bpp + y*bpp*width];
-                    data_new[1 + x*bpp + y*bpp*width] =  data[1 + (width-x)*bpp + y*bpp*width];
-                    data_new[2 + x*bpp + y*bpp*width] =  data[2 + (width-x)*bpp + y*bpp*width];
-                    data_new[3 + x*bpp + y*bpp*width] =  data[3 + (width-x)*bpp + y*bpp*width];
-                }
-            }
-            ir_frame->setImage(data,width*height*bpp);
+                    data16[x + y*width] = (uint16_t)(dataFloat[x + y*width]);
+                       // To mirror image : (width-x)*bpp_grayscale
+                    dataChar[0 + x*bpp_grayscale + y*width*bpp_grayscale] = (char)(data16[x + y*width] & 0x00ff);
+                    dataChar[1 + x*bpp_grayscale + y*width*bpp_grayscale] = (char)((data16[x + y*width] & 0xff00) >> 8);
+                 }
+             }
+
+            ir_frame->setImage(dataChar,width*height*bpp_grayscale);
             ir_frame->time = base::Time::now();
             ir_frame_p.reset(ir_frame);
             _ir_frame.write(ir_frame_p);
         }else{
-            LOG_ERROR_S << "IR Image: Unssuported bits per pixel size of " << bpp;
+            LOG_ERROR_S << "IR Image: Unsupported bits per pixel size of " << bpp;
             delete frame;
             return false;
         }
@@ -155,19 +166,47 @@ bool Task::onNewFrame(Frame::Type type, Frame *frame){
                 Freenect2Device::IrCameraParams p = device->getIrCameraParams();
                 depth_frame->setIntrinsic(p.fx,p.fy,p.cx,p.cy);
             }
-            depth_frame->time = base::Time::now();
-            float *depth_data = (float*)data;
+             // added
+           if(!visualizeDepth_frame){
+                visualizeDepth_frame = new base::samples::frame::Frame(width, height, 16, base::samples::frame::MODE_GRAYSCALE);
+           }
+               // end
 
-            for(size_t x=0;x<width;x++){
-                for(size_t y=0;y<height;y++){
-                    depth_frame->data[x+y*width] = depth_data[(width-x)+y*width]/1000.0; //to meters
-                }
-            }
+             	depth_frame->time = base::Time::now();
+            	 float *depth_data = (float*)data;
+ 
+               // added
+           	float *dataFloat = (float*)data;
+           	size_t bpp_grayscale = 2;
+           	uint16_t data16[width*height];
+           	char dataChar[width*height*bpp_grayscale];
+               // end
+
+	    for(size_t x=0;x<width;x++){
+                 for(size_t y=0;y<height;y++){
+                    depth_frame->data[x+y*width] = depth_data[(width-x)+y*width]*10.0; // randomly scaled for visualization
+                        // added
+                    data16[x + y*width] = (uint16_t)(dataFloat[x + y*width]);
+                        // To mirror image : (width-x)*bpp_grayscale
+                    dataChar[0 + x*bpp_grayscale + y*width*bpp_grayscale] = (char)(data16[x + y*width] & 0x00ff);
+                    dataChar[1 + x*bpp_grayscale + y*width*bpp_grayscale] = (char)((data16[x + y*width] & 0xff00) >> 8);
+                        // end
+                 }
+             }
+
 
             depth_frame_p.reset(depth_frame);
             _depth_frame.write(depth_frame_p);
+
+               // added
+            visualizeDepth_frame->setImage(dataChar,width*height*bpp_grayscale);
+            visualizeDepth_frame->time = base::Time::now();
+            visualizeDepth_frame_p.reset(visualizeDepth_frame);
+            _visualizeDepth_frame.write(visualizeDepth_frame_p);
+               // end
+
         }else{
-            LOG_ERROR_S << "Depth Image: Unssuported bits per pixel size of " << bpp;
+            LOG_ERROR_S << "Depth Image: Unsupported bits per pixel size of " << bpp;
             delete frame;
             return false;
         }
